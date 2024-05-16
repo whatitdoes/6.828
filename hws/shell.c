@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <assert.h>
+#include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -56,27 +57,72 @@ runcmd(struct cmd *cmd)
   default:
     fprintf(stderr, "unknown runcmd\n");
     _exit(-1);
-    
+
   case ' ':
     ecmd = (struct execcmd*)cmd;
     if(ecmd->argv[0] == 0)
       _exit(0);
-    fprintf(stderr, "exec not implemented\n");
+    // fprintf(stderr, "exec not implemented\n");
     // Your code here ...
+    // fprintf(stdout, "start execv...\n");
+    if(execvp(ecmd->argv[0], ecmd->argv) == -1) {
+        fprintf(stderr, "execv error code: %d\n", errno);
+        int i=0;
+        for(i=0;i<MAXARGS && ecmd->argv[i]!=NULL;i++) {
+          fprintf(stdout, "execv %d-th arg is:%s\n", i, ecmd->argv[i]);
+        }
+    }
+    // Your code done
     break;
 
   case '>':
   case '<':
     rcmd = (struct redircmd*)cmd;
-    fprintf(stderr, "redir not implemented\n");
+    // fprintf(stderr, "redir not implemented\n");
     // Your code here ...
+    close(rcmd->fd);
+    open(rcmd->file, rcmd->flags);
+    // Your code done
     runcmd(rcmd->cmd);
     break;
 
   case '|':
     pcmd = (struct pipecmd*)cmd;
-    fprintf(stderr, "pipe not implemented\n");
+    // fprintf(stderr, "pipe not implemented\n");
     // Your code here ...
+    int ppds[2];
+    if(pipe(ppds) == -1) {
+        fprintf(stderr, "pipe init error");
+        break;
+    }
+    // read 
+    if(fork() == 0) {
+        close(0);
+        if(dup(ppds[0]) != 0) {
+            fprintf(stderr, "dup error");
+            break;
+        }
+        close(ppds[0]);
+        close(ppds[1]);
+        runcmd(pcmd->right);
+    }
+    // write
+    if(fork() == 0) {
+        close(1);
+        if(dup(ppds[1]) != 1) {
+            fprintf(stderr, "dup error");
+            break;
+        }
+        close(ppds[0]);
+        close(ppds[1]);
+        runcmd(pcmd->left);
+    }
+    close(ppds[0]);
+    close(ppds[1]);
+    int ret;
+    while(wait(&ret) > 0 );
+    // todo_wait_for_two_processes_to_die()
+    // Your code done
     break;
   }    
   _exit(0);
